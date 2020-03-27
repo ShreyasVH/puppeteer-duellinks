@@ -67,16 +67,13 @@ function getCardDetails () {
                 details.level = parseInt(matches[1], 10);
             }
 
-            const attributeElements = document.querySelectorAll('.card-set-att');
-            if (attributeElements.length > 0) {
-                const attributeElement = attributeElements[0];
-                details.attribute = attributeElement.textContent;
-            }
+            const attributeTypeElement = document.querySelectorAll('.raceattribute a img');
+            if (attributeTypeElement.length === 2) {
+                const attributeElement = attributeTypeElement[0];
+                details.attribute = attributeElement.title;
 
-            const typeElements = document.querySelectorAll('.card-set-race');
-            if (typeElements.length > 0) {
-                const typeElement = typeElements[0];
-                details.type = typeElement.textContent.replace(' ', '_').toUpperCase();
+                const typeElement = attributeTypeElement[1];
+                details.type = typeElement.title.toUpperCase().replace(/ /g, '_');
             }
 
             const atkDefElements = document.querySelectorAll('.card-set-atk');
