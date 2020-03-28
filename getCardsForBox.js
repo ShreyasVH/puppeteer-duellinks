@@ -73,7 +73,7 @@ function getCardDetails () {
                 details.attribute = attributeElement.title;
 
                 const typeElement = attributeTypeElement[1];
-                details.type = typeElement.title.toUpperCase().replace(/ /g, '_');
+                details.type = typeElement.title.toUpperCase().replace(/ |-/g, '_');
             }
 
             const atkDefElements = document.querySelectorAll('.card-set-atk');
