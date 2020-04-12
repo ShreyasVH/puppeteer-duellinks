@@ -111,10 +111,6 @@ function getCardDetails () {
     return details;
 }
 
-let cards = {};
-
-let failed = [];
-
 (async () => {
     const browser  = await puppeteer.launch({
         headless: true,
@@ -122,6 +118,18 @@ let failed = [];
     });
 
     const formattedBoxName = process.argv[2].replace(/ /g, '_');
+
+    let cards = {};
+    if(fs.existsSync('data/cards_' + formattedBoxName + '.json'))
+    {
+        cards = JSON.parse(fs.readFileSync('data/cards_' + formattedBoxName + '.json'));
+    }
+
+    let failed = [];
+    if(fs.existsSync('data/failedCards_' + formattedBoxName + '.json'))
+    {
+        failed = JSON.parse(fs.readFileSync('data/failedCards_' + formattedBoxName + '.json'));
+    }
 
     const basePage = await browser.newPage();
     await basePage.goto('https://www.konami.com/yugioh/duel_links/en/box/', {
@@ -183,6 +191,11 @@ let failed = [];
 
                             if (areDetailsObtained) {
                                 cards[cardName] = cardDetails;
+                                let failedIndex = failed.indexOf(cardName);
+                                if(-1 !== failedIndex)
+                                {
+                                    failed.splice(failedIndex, 1);
+                                }
                             }
 
                             await cardPage.close();
