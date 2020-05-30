@@ -5,7 +5,12 @@ const axios = require('axios');
 
 (async() => {
 
-	const articleResponse = await axios('https://www.duellinksmeta.com/data-hashed/articles_full-47411b1d8c.json');
+	const manifestResponse = await axios('https://www.duellinksmeta.com/rev-manifest.json');
+	const manifestData = manifestResponse.data;
+
+	const articlesUrl = manifestData['articles_full.json'];
+
+	const articleResponse = await axios('https://www.duellinksmeta.com/data-hashed/' + articlesUrl);
 	const articles = articleResponse.data;
 	let tierLists = [];
 
@@ -19,13 +24,21 @@ const axios = require('axios');
 
     const browser = await puppeteer.launch();
 
+    let index = 1;
     for (const url of tierLists) {
-    	console.log("\nProcessing URL - " + url + "\n");
+    	if (index > 1) {
+    		console.log("\n--------------------------------------\n");
+    	}
+    	console.log("\nProcessing URL - " + url + "[" + index + "/" + tierLists.length + "]\n");
     	const page = await browser.newPage();
 
     	const filenameParts = url.split('/');
     	const filename = filenameParts[filenameParts.length - 2];
 
+    	await page.setViewport({
+    		width: 1920,
+    		height: 1080
+    	});
     	await page.goto('https://www.duellinksmeta.com' + url, {
     	    waitUntil: 'networkidle2',
     	    timeout: 0
@@ -35,7 +48,8 @@ const axios = require('axios');
     		fullPage: true
     	});
     	await page.close();
-    	console.log("\nProcessed URL - " + url + "\n");
+    	console.log("\nProcessed URL - " + url + "[" + index + "/" + tierLists.length + "]\n");
+    	index++;
     }
     
     await browser.close();
