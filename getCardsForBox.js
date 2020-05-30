@@ -63,7 +63,7 @@ function getCardDetails () {
             if (levelElements.length > 0) {
                 const levelElement = levelElements[0];
                 const levelString = levelElement.alt;
-                let matches = levelString.match(/Level ([0-9]+)/);
+                let matches = levelString.match(/Level\/Rank ([0-9]+)/);
                 details.level = parseInt(matches[1], 10);
             }
 
@@ -202,6 +202,7 @@ function getCardDetails () {
                             retryCount++;
                         } catch (error) {
                             console.log("\n\tError while getting details about card." + error + "\n");
+                            retryCount++;
                         }
                     }
 
