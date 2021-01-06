@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "fs": "0.0.1-security",
     "minimist": ">=0.2.1",
     "puppeteer": "^2.1.1"
