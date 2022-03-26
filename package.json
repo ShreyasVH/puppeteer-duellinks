@@ -2,7 +2,7 @@
   "dependencies": {
     "axios": "^0.19.2",
     "fs": "0.0.1-security",
-    "minimist": ">=0.2.1",
+    "minimist": ">=1.2.6",
     "puppeteer": "^2.1.1"
   }
 }
