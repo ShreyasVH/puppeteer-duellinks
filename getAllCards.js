@@ -1,330 +1,160 @@
-const puppeteer = require('puppeteer');
+'use strict';
+
+const get = require('./api').get;
 const fs = require('fs');
+const path = require('path');
 
-const requiredBoxName = process.argv[2];
-
-function getBoxLinks () {
-    let boxes = {};
-
-    const sections = document.querySelectorAll('.box-list');
-    for(const index in sections) {
-        if (sections.hasOwnProperty(index)) {
-            const section = sections[index];
-
-            let sectionName = '';
-            const sectionNameElements = section.querySelectorAll('h2');
-            if (sectionNameElements.length > 0) {
-                sectionName = sectionNameElements[0].textContent;
-            }
-
-            let links = [];
-
-            let boxElements =  section.querySelectorAll('ul li a');
-            for (let index in boxElements) {
-                if (boxElements.hasOwnProperty(index)) {
-                    const boxElement = boxElements[index];
-
-                    const boxName = boxElement.querySelectorAll('.banner')[0].alt;
-
-                    console.log(boxName);
-
-                    links.push({
-                        url: boxElement.href,
-                        name: boxName
-                    });
-                }
-            }
-
-            boxes[sectionName] = links;
-        }
-    }
-
-    return boxes;
-}
-
-function getAllCards () {
-    let cards = [];
-    let cardElements = document.querySelectorAll('.card-list.grid li a');
-
-    for (let index in cardElements) {
-        if (cardElements.hasOwnProperty(index)) {
-            let cardElement = cardElements[index];
-
-            const name = cardElement.querySelectorAll('dt')[0].textContent;
-
-            let rarityString = cardElement.classList[0];
-
-            let rarity = '';
-            if (rarityString.indexOf('rare-ur') !== -1) {
-                rarity = 'ULTRA_RARE';
-            } else if (rarityString.indexOf('rare-sr') !== -1) {
-                rarity = 'SUPER_RARE';
-            } else if (rarityString.indexOf('rare-r') !== -1) {
-                rarity = 'RARE';
-            } else if (rarityString.indexOf('rare-n') !== -1) {
-                rarity = 'NORMAL';
-            }
-
-            cards.push({
-                name,
-                rarity
-            });
-        }
-    }
-    return cards;
-}
-
-function getCardDetails () {
+const getCardDetailsFromYGO = async name => {
     let details = {};
+    let tryCount = 1;
 
-    const nameElements = document.querySelectorAll('.card-name .heading-name');
-    if (nameElements.length > 0) {
-        const nameElement = nameElements[0];
-        details.name = nameElement.textContent;
-    }
-
-    const cardTypeElements = document.querySelectorAll('.card-set-type');
-    if (cardTypeElements.length > 0) {
-        const cardTypeElement = cardTypeElements[0];
-        const cardTypeString = cardTypeElement.textContent;
-
-        let cardType = '';
-
-        if (cardTypeString.toUpperCase().indexOf('MONSTER') !== -1) {
-            cardType = 'MONSTER';
-        } else if (cardTypeString.toUpperCase().indexOf('SPELL') !== -1) {
-            cardType = 'SPELL';
-        } else if (cardTypeString.toUpperCase().indexOf('TRAP') !== -1) {
-            cardType = 'TRAP';
+    while (Object.keys(details).length === 0 && tryCount <= 5) {
+        if (tryCount > 1) {
+            console.log('\tRetrying for ' + name + '....');
         }
-        details.cardType = cardType;
 
-        if ('MONSTER' === cardType) {
-            const levelElements = document.querySelectorAll('.card-level img');
-            if (levelElements.length > 0) {
-                const levelElement = levelElements[0];
-                const levelString = levelElement.alt;
-                let matches = levelString.match(/Level ([0-9]+)/);
-                details.level = parseInt(matches[1], 10);
-            }
-
-            const attributeElements = document.querySelectorAll('.card-set-att');
-            if (attributeElements.length > 0) {
-                const attributeElement = attributeElements[0];
-                details.attribute = attributeElement.textContent;
-            }
-
-            const typeElements = document.querySelectorAll('.card-set-race');
-            if (typeElements.length > 0) {
-                const typeElement = typeElements[0];
-                details.type = typeElement.textContent.replace(' ', '_').toUpperCase();
-            }
-
-            const atkDefElements = document.querySelectorAll('.card-set-atk');
-            if (atkDefElements.length > 0) {
-                const atkDefElement = atkDefElements[0];
-                const atkDefString = atkDefElement.textContent;
-
-                // const matches = atkDefString.match(/ATK: (([0-9?]{1,4})+) DEF: (([0-9?]{1,4})+)/);
-
-                const parts = atkDefString.split(" ");
-
-                details.attack = parts[1];
-                details.defense = parts[3];
-            }
+        const url = 'https://db.ygoprodeck.com/api_internal/v7/cardinfo.php?name=' + encodeURI(name);
+        const response = await get(url);
+        if (response.status === 200) {
+            details = response.result.data[0];
         }
+
+        tryCount++;
     }
-
-    const descriptionElements = document.querySelectorAll('.card-set-desc');
-    if (descriptionElements.length > 0) {
-        const descriptionElement = descriptionElements[0];
-        details.description = descriptionElement.textContent;
-    }
-
-    details.cardSubTypes = [
-        'NORMAL'
-    ];
-
-    details.limitType = 'UNLIMITED';
-    details.imageUrl = 'https://res.cloudinary.com/dyoxubvbg/image/upload/v1571554087/cards/p5zathr8gjqahfi19lft.png';
 
     return details;
 }
 
-function sleep (milliseconds) {
-    const date = Date.now();
-    let currentDate = null;
-    do {
-        currentDate = Date.now();
-    } while (currentDate - date < milliseconds);
+const formatDetails = (dlmDetails, ygoDetails) => {
+    const rarityMap = {
+        N: 'NORMAL',
+        R: 'RARE',
+        SR: 'SUPER_RARE',
+        UR: 'ULTRA_RARE'
+    };
+    const rarity = rarityMap[dlmDetails.rarity];
+
+    const cardTypeMap = {
+        Monster: 'MONSTER',
+        Spell: 'SPELL',
+        Trap: 'TRAP'
+    };
+    const cardType = cardTypeMap[dlmDetails.type];
+
+    let details = {
+        name: dlmDetails.name,
+        rarity,
+        cardType,
+        description: ygoDetails.desc,
+        limitType: 'UNLIMITED'
+    };
+
+    if (dlmDetails.release) {
+        details.releaseDate = dlmDetails.release;
+    }
+
+    let cardSubTypes = [
+        'NORMAL'
+    ];
+
+    const race = ygoDetails.race;
+    const formattedRace = race.replace(/[- ]/, '_').toUpperCase();
+
+    if ('MONSTER' === cardType) {
+        details.level = ygoDetails.level;
+        details.attribute = ygoDetails.attribute;
+        details.type = formattedRace;
+        details.attack = ygoDetails.atk;
+        details.defense = ygoDetails.def;
+    } else {
+        cardSubTypes = [
+            formattedRace
+        ];
+    }
+
+    details.cardSubTypes = cardSubTypes;
+    let images = ygoDetails.card_images.map(image => image.image_url);
+    if (images.length > 1) {
+        details.images = images;
+    }
+
+    if (images.length > 0) {
+        details.imageUrl = images[0];
+    }
+    return details;
 }
 
-let data = {};
-
-let failed = [];
-
-let boxNames = [];
-
 (async () => {
-    const browser  = await puppeteer.launch({
-        headless: true,
-        devtools: true
-    });
 
-    const basePage = await browser.newPage();
-    await basePage.goto('https://www.konami.com/yugioh/duel_links/en/box/', {
-        waitUntil: 'networkidle2',
-        timeout: 0
-    });
+    const dataDir = path.resolve(__dirname, 'data/');
 
-    const boxLinksData = await basePage.evaluate(getBoxLinks);
-    let sectionIndex = 1;
-    for (const sectionName in boxLinksData) {
-        if (boxLinksData.hasOwnProperty(sectionName)) {
-            let boxLinks = boxLinksData[sectionName];
+    let newCards = {};
+    let errorCards = [];
+    fs.writeFileSync(dataDir + '/newCards.json', JSON.stringify(newCards, null, ' '));
 
-            if (sectionIndex >= 1) {
-                if (sectionName !== Object.keys(boxLinksData)[0]) {
-                    console.log("\n.................................................................\n");
+    let existingCardsMap = JSON.parse(fs.readFileSync(dataDir + '/existingCards.json'));
+
+    const ignoredCards = JSON.parse(fs.readFileSync(dataDir + '/ignoredCards.json'));
+
+    let totalCount = 0;
+
+    const countResponse = await get ('https://www.duellinksmeta.com/api/v1/cards?obtain.0[$exists]=true&cardSort=release&count=true');
+    if (countResponse.status === 200) {
+        totalCount = parseInt(countResponse.result);
+    }
+    let offset = 0;
+    const limit = 1000;
+
+    while (offset < totalCount) {
+        const page = (offset / limit) + 1;
+        if (page > 1) {
+            console.log('--------------------------------');
+        }
+
+        console.log('Processing page. [' + page + '/' + Math.ceil(totalCount / limit) + ']');
+        console.log('https://www.duellinksmeta.com/api/v1/cards?obtain.0[$exists]=true&cardSort=release&page=' + page + '&limit=' + limit);
+        const cardResponse = await get ('https://www.duellinksmeta.com/api/v1/cards?obtain.0[$exists]=true&cardSort=release&page=' + page + '&limit=' + limit);
+        if (cardResponse.status === 200) {
+            let cardList = (cardResponse.result);
+            let index = 0;
+            for (const card of cardList) {
+                if (index > 0) {
+                    console.log('\t........................')
                 }
 
-                console.log("\nProcessing section. [" + sectionIndex + "/" + (Object.keys(boxLinksData).length) + "]\n");
+                console.log('\tProcessing card. [' + (offset + index + 1) + '/' + totalCount + ']');
+                if (card.release && Array.isArray(card.obtain) && (card.obtain.length > 0) && !ignoredCards.includes(card.name)) {
+                    let isNewCard = !existingCardsMap.hasOwnProperty(card.name);
+                    if (card.release) {
+                        const releaseDate = new Date(card.release);
+                        isNewCard = (isNewCard && (releaseDate.getTime() < Date.now()));
 
-                for (const indexString in boxLinks) {
-                    if (boxLinks.hasOwnProperty(indexString)) {
-                        const index = parseInt(indexString, 10);
+                        if (isNewCard) {
+                            try {
+                                console.log('\t\tGetting YGO Details');
 
-                        if (index >= 0) {
+                                let details = await getCardDetailsFromYGO(card.name);
+                                let formattedDetails = formatDetails(card, details);
 
-                            if (index > 0) {
-                                console.log("\n\t-------------------------------------------------------------\n");
+                                existingCardsMap[card.name] = formattedDetails;
+                                fs.writeFileSync(dataDir + '/existingCards.json', JSON.stringify(existingCardsMap, null, ' '));
+                                newCards[card.name] = formattedDetails;
+                                fs.writeFileSync(dataDir + '/newCards.json', JSON.stringify(newCards, null, ' '));
+
+                                console.log('\t\tGot YGO Details');
+                            } catch (e) {
+                                errorCards.push(card.name);
+                                fs.writeFileSync(dataDir + '/errorCards.json', JSON.stringify(errorCards, null, ' '));
                             }
-
-                            console.log("\n\tProcessing box: [" + (index + 1) + "/" + boxLinks.length + "]\n");
-
-                            const boxLinkElement = boxLinks[index];
-                            const boxLink = boxLinkElement.url;
-                            const boxName = boxLinkElement.name;
-
-                            const boxPage = await browser.newPage();
-                            await boxPage.goto(boxLink, {
-                                waitUntil: 'networkidle2',
-                                timeout: 0
-                            });
-
-                            let boxCards = await boxPage.evaluate(getAllCards);
-
-                            let cardIndex = 0;
-                            let retryCount = 1;
-                            let cardDetails = {};
-                            let cardName = '';
-
-                            while (cardIndex < boxCards.length) {
-                                if (cardIndex >= 0) {
-
-                                    if ((cardIndex > 0) && (retryCount === 1)) {
-                                        console.log("\n\t\t.........................\n");
-                                    }
-
-                                    if (retryCount === 1) {
-                                        console.log("\n\t\tProcessing card. [" + (cardIndex + 1) + "/" + boxCards.length + "]\n");
-                                    } else {
-                                        console.log("\n\t\t\tRetrying...\n");
-                                    }
-
-                                    let cardElement = boxCards[cardIndex];
-                                    cardName = cardElement.name;
-
-                                    try {
-                                        const cardPage = await browser.newPage();
-                                        await cardPage.goto('https://db.ygoprodeck.com/card/?search=' + cardName, {
-                                            waitUntil: 'networkidle2',
-                                            timeout: 0
-                                        });
-
-                                        cardDetails = await cardPage.evaluate(getCardDetails);
-                                        cardDetails = Object.assign({}, cardElement, cardDetails);
-
-                                        await cardPage.close();
-                                    } catch (error) {
-                                        console.log("\n\t\t\tError while getting details about card." + error + "\n");
-                                    }
-
-                                } else {
-                                    break;
-                                }
-
-                                if ((cardDetails.cardType || (retryCount > 5))) {
-                                    console.log("\n\t\tProcessed card. [" + (cardIndex + 1) + "/" + boxCards.length + "]\n");
-
-                                    cardIndex++;
-                                    retryCount = 1;
-
-                                    if (data.hasOwnProperty(sectionName)) {
-                                        if (data[sectionName].hasOwnProperty(boxName)) {
-                                            data[sectionName][boxName].push(cardDetails);
-                                        } else {
-                                            data[sectionName][boxName] = [
-                                                cardDetails
-                                            ];
-                                        }
-                                    } else {
-                                        data[sectionName] = {};
-                                        data[sectionName][boxName] = [
-                                            cardDetails
-                                        ];
-                                    }
-
-                                    fs.writeFile('data/allCards.json', JSON.stringify(data, null, ' '), error => {
-                                        if (error) {
-                                            console.log("\n\t\tError while writing card data. Error: " + error + "\n");
-                                        }
-                                    });
-
-
-                                    let success = (cardDetails.hasOwnProperty('cardType') && (cardDetails.cardType !== ''));
-                                    if (!success) {
-                                        failed.push({
-                                            cardName,
-                                            boxName,
-                                            sectionName
-                                        });
-                                    }
-
-                                    fs.writeFile('data/statusData.json', JSON.stringify(failed, null, ' '), error => {
-                                        if (error) {
-                                            console.log("\n\t\tError while writing card data status. Error: " + error + "\n");
-                                        }
-                                    });
-
-                                    sleep(500);
-
-                                } else {
-                                    retryCount++;
-                                }
-                            }
-
-                            await boxPage.close();
-
-                            console.log("\n\tProcessed box: [" + (index + 1) + "/" + boxLinks.length + "]\n");
-                        } else {
-                            break;
                         }
                     }
                 }
-
-                console.log("\nProcessed section. [" + sectionIndex + "/" + (Object.keys(boxLinksData).length) + "]\n");
-
-            } else {
-                break;
+                console.log('\tProcessed card. [' + (offset + index + 1) + '/' + totalCount + ']');
+                index++;
             }
-
-            sectionIndex++;
+            offset += limit;
         }
+        console.log('Processed page. [' + page + '/' + Math.ceil(totalCount / limit) + ']');
+
     }
-
-    await basePage.close();
-
-    await browser.close();
-
 })();
